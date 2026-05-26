@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+#
+# audit-home.sh — Localise les gros fichiers et répertoires d'une partition
+#
+# Usage :   sudo ./audit-home.sh [chemin] [seuil_taille]
+#   chemin        : répertoire à auditer        (défaut : /home)
+#   seuil_taille  : taille mini des fichiers     (défaut : 100M)
+#
+# Exemple : sudo ./audit-home.sh /home 500M
+#
+
+set -u
+
+# --- Paramètres -------------------------------------------------------------
+CIBLE="${1:-/home}"
+SEUIL="${2:-100M}"
+TOP=15                       # nombre de lignes affichées dans chaque classement
+
+# --- Vérifications ----------------------------------------------------------
+if [[ ! -d "$CIBLE" ]]; then
+    echo "Erreur : '$CIBLE' n'est pas un répertoire." >&2
+    exit 1
+fi
+
+if [[ $EUID -ne 0 ]]; then
+    echo "Avertissement : lancé sans sudo, certains fichiers seront illisibles." >&2
+    echo
+fi
+
+trait() { printf '%s\n' "----------------------------------------------------------------------"; }
+
+# --- Étape 1 : occupation de la partition -----------------------------------
+trait
+echo "[1] Occupation de la partition contenant $CIBLE"
+trait
+df -h "$CIBLE"
+echo
+
+# --- Étape 2 : répertoires les plus lourds ----------------------------------
+trait
+echo "[2] Top $TOP des répertoires les plus volumineux (2 niveaux)"
+trait
+du -xh --max-depth=2 "$CIBLE" 2>/dev/null | sort -rh | head -n "$TOP"
+echo
+
+# --- Étape 3 : fichiers les plus volumineux ---------------------------------
+trait
+echo "[3] Top $TOP des fichiers de plus de $SEUIL"
+trait
+find "$CIBLE" -xdev -type f -size "+$SEUIL" -printf '%s\t%p\n' 2>/dev/null \
+    | sort -rn \
+    | head -n "$TOP" \
+    | numfmt --to=iec --field=1 --padding=10
+echo
+
+# --- Étape 4 : fichiers supprimés mais encore ouverts -----------------------
+trait
+echo "[4] Fichiers supprimés mais encore ouverts par un processus"
+echo "    (occupent de l'espace invisible pour du/find — redémarrer le"
+echo "     processus concerné libère la place)"
+trait
+if command -v lsof >/dev/null 2>&1; then
+    resultat=$(lsof +L1 2>/dev/null | grep "$CIBLE")
+    if [[ -n "$resultat" ]]; then
+        echo "$resultat"
+    else
+        echo "Aucun fichier de ce type détecté sous $CIBLE."
+    fi
+else
+    echo "lsof n'est pas installé — étape ignorée."
+fi
+echo
+
+trait
+echo "Audit terminé."
+trait
