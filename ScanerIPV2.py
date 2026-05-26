@@ -1,3 +1,13 @@
+# Compatibilite : Python 3.6+
+# Teste sur : macOS, Rocky Linux 8
+# Dependances externes : nmap (sudo apt/yum install nmap)
+#
+# Points de vigilance Python 3.6 :
+#   - f-strings : OK (3.6+)
+#   - subprocess.run : OK (3.5+), capture_output=True evite (3.7+ seulement)
+#   - urllib.parse.quote : OK (3.x), NE PAS utiliser urllib.request.quote (inexistant)
+#   - ThreadPoolExecutor : OK (3.2+)
+
 import ipaddress
 import platform
 import subprocess
@@ -7,6 +17,7 @@ import os
 import tempfile
 import urllib.request
 import urllib.error
+import urllib.parse   # quote() est dans urllib.parse, pas dans urllib.request
 import time
 
 
@@ -63,7 +74,7 @@ def lookup_mac_vendor(mac_addr):
         return "Inconnu"
 
     oui = mac_addr[:8]  # "AA:BB:CC:DD:EE:FF" -> "AA:BB:CC"
-    url = f"https://api.macvendors.com/{urllib.request.quote(oui)}"
+    url = f"https://api.macvendors.com/{urllib.parse.quote(oui)}"
 
     try:
         with urllib.request.urlopen(url, timeout=5) as response:
@@ -130,7 +141,9 @@ def scan_with_nmap_on_ips(active_ips):
         #            Necessite sudo pour les raw sockets ARP.
         cmd = ["nmap", "-T4", "--open", "-sV", "-oX", output_xml, "-iL", tmp_path]
         print("Nmap en cours... (decouverte ARP activee, peut etre plus long)")
-        subprocess.run(cmd, capture_output=True, timeout=900)
+        # capture_output=True n'existe qu'en Python 3.7+
+        # On utilise la forme explicite pour compatibilite Python 3.6
+        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=900)
 
         if os.path.exists(output_xml):
             print("[OK] Scan Nmap termine")
